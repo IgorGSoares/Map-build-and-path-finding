@@ -1,0 +1,514 @@
+<html>
+    <head>
+        <meta charset="UTF-8"/>
+        <title>GA-Igor</title>
+        <style></style>
+    </head>
+    <body>
+        <canvas id="myCanvas" width="500" height="500" style="border:5px solid #13eb30;">
+            Your browser does not support the canvas element.
+        </canvas>
+
+        <p id="demo"></p>
+
+        <script src="rhill-voronoi-core.js"></script>
+
+        <script>
+
+            var diagram = null;
+            voronoi = new Voronoi();
+            var bbox = {xl: 0, xr: 500, yt: 0, yb: 500};
+            var sites = [];
+            var url = "rhill-voronoi-core.js";
+
+            var points=[];
+            var pilha=[];
+            var points2=[];
+
+            var arestas=[];//ponto 1, ponto 2, peso (distancia entre pontos)
+            var vor=[];//array para desenhar diagrama de voronoi
+            var path=[];
+
+            var valor = 0;
+            var star=[];
+
+            var canvas = document.getElementById("myCanvas");
+            var ctx = canvas.getContext("2d");
+
+            window.onload = function()
+            {
+                var img = document.getElementById("mapa");
+                ctx.drawImage(img,0,0,500,500);
+            }
+
+            canvas.addEventListener("mousedown", function(e)
+            {
+                mousePos(canvas,e);
+            });
+
+            draw();
+
+            function mousePos(canvas,event)
+            {
+                let rect = canvas.getBoundingClientRect();
+                let i = event.clientX - rect.left;
+                let j = event.clientY - rect.top;
+                points.push({x:i,y:j});
+                //addCoord(i,j);
+                addBtn(valor, i, j);
+                valor++;
+                draw();
+            }
+
+            function distance(a1,b1,a2,b2) 
+            {
+                let x = a1-a2;
+                let y = b1-b2;
+                return Math.sqrt(x*x+y*y);
+            }
+
+            function draw()
+            {
+                ctx.beginPath();
+                ctx.fillStyle = "red";
+                for(let i=0;i<points.length;i++)
+                {
+                    ctx.fillRect(points[i].x,points[i].y,6,6);
+                }
+                ctx.closePath();
+                ctx.stroke();
+
+                if (pilha.length > 0 ) {
+
+                    ctx.beginPath();
+                    ctx.fillStyle = "black";
+                    for(let i=0;i<pilha.length;i++)
+                    {
+                        //ctx.fillRect(points2[i].x,points2[i].y,3,3);
+                        if (i === pilha.length-1) {
+                            ctx.moveTo(pilha[i].x, pilha[i].y);
+                            ctx.lineTo(pilha[0].x, pilha[0].y);
+                            ctx.lineWidth = 3;
+                        }
+                        else{
+                            ctx.moveTo(pilha[i].x, pilha[i].y);
+                            ctx.lineTo(pilha[i+1].x, pilha[i+1].y);
+                            ctx.lineWidth = 3;
+                        }
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.fillStyle = "red";
+                    for(let i=0;i<pilha.length;i++)
+                    {
+                        ctx.fillRect(pilha[i].x,pilha[i].y,6,6);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    // ctx.beginPath();
+                    // ctx.fillStyle = "blue";
+                    // for(let i=0;i<star.length;i++)
+                    // {
+                    //     ctx.fillRect(star[i].x,star[i].y,6,6);
+                    // }
+                    // ctx.closePath();
+                    // ctx.stroke();
+                }
+
+                ctx.beginPath();
+                ctx.fillStyle = "blue";
+                for(let i=0;i<path.length;i++)
+                {
+                    ctx.fillRect(path[i].x,path[i].y,6,6);
+                }
+                ctx.closePath();
+                ctx.stroke();
+                    
+
+                // var ctx = document.getElementById("myCanvas").getContext('2d');
+                // var img = new Image();
+                // img.onload = function() {
+                //     ctx.drawImage(img,0,0,200,200);
+                // };
+                // img.src = '47-0.jpg';
+            }
+
+            function apagar()
+            {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+
+            function duplicar(array)//adiciona pontos para um array duplicado
+            {
+                for(let i=0; i<points.length; i++)
+                {
+                    //array.push({x:points[i].x, y:points[i].y, ind:i, angle:0});
+                    array.push({x:points[i].x, y:points[i].y, angle:0});
+                }
+            }
+
+            function polarAngle(p)
+            {
+                return Math.atan(p.y/p.x);
+            }
+            
+            function ccw(p1, p2, p3) {
+                // ccw > 0: counter-clockwise; ccw < 0: clockwise; ccw = 0: collinear
+                return (p2.x - p1.x) * (p3.y - p1.y)- (p2.y - p1.y) * (p3.x - p1.x);
+            } 
+
+            function AnglePoints(p1,p2)
+            {
+                let dy = p2.y-p1.y;
+                let dx = p2.x-p1.x;
+                let theta = Math.atan2(dy,dx);
+                theta *= 180/Math.PI;
+                return theta;
+            }
+            
+            function organizar(array)
+            {
+                array.sort(function(a, b){return a.angle-b.angle});
+                //displayPoints();
+            }
+
+            function define_angle(p, array)
+            {
+                for (let i = 0; i < array.length; i++) {
+                    //array[i].angle = (polarAngle(array[i]))*(180/Math.PI);
+                    array[i].angle = AnglePoints(p, array[i]);
+                }
+            }
+
+            function convexHull()//assistir a partir de 00:15:00
+            {
+                //1-separar ponto com menor y (nesse caso, o maior y)
+                points2.sort(function(a, b){return a.y-b.y});
+                pilha.push(points2[points2.length-1]);
+                points2.pop();
+
+                //2-criar vetor e um angulo entre o menor y e cada ponto
+                define_angle(pilha[0], points2);
+                organizar(points2);
+                points2.unshift(pilha[0]);
+
+                //3-adicionar origem no array de pontos, ele e o primeiro e o ultimo ponto ficam intocados
+                //points2.unshift(origem);
+                pilha.push(points2[1]);
+                pilha.push(points2[2]);
+                let indexA = 3;
+                let indexP = 3;
+
+                //4-verifica se cada um dos pontos forma angulo concavo ou convexo (ponto atual, ponto anterior, proximo ponto)
+                //nota: verificar se chegou no fim, usar while para voltar até formar angulo convexo, na hora de desenhar, conectar ultimo e primeiro
+                //(ccw(array[index], array[index+1], array[index-1]) < 0) {//convexo
+                //(ccw(array[index], array[index+1], array[index-1]) > 0) {//concavo
+                    for (let i = indexA; i < points2.length; i++) {
+                    pilha.push(points2[i]);
+                    if (i === points2.length-1) {
+                        break;
+                    }
+                    if (ccw(pilha[indexP], pilha[indexP-1], points2[i+1]) < 0) { //convexo
+                        indexP+=1;
+                    }
+                    else if (ccw(pilha[indexP], pilha[indexP-1], points2[i+1]) > 0) { //concavo
+                        while (ccw(pilha[indexP], pilha[indexP-1], points2[i+1]) > 0) { //concavo
+                            pilha.pop();
+                            indexP-=1;
+                        }
+                        indexP+=1;
+                    }
+                }
+            }
+
+            function draw2()//desenhar voronoi
+            {
+                ctx.beginPath();
+                ctx.strokeStyle = "yellow";
+
+                for (let i = 0; i < vor.length; i++) {
+                    ctx.moveTo(vor[i].p1.x, vor[i].p1.y);
+                    ctx.lineTo(vor[i].p2.x, vor[i].p2.y);
+                    ctx.lineWidth = 3;
+                }
+                // ctx.moveTo(arestas[0].p1.x, arestas[0].p1.y);
+                // ctx.lineTo(arestas[0].p2.x, arestas[0].p2.y);
+                // ctx.lineWidth = 3;
+
+                ctx.closePath();
+                ctx.stroke();
+            }
+
+            function draw3()//desenhar grafo
+            {
+                ctx.beginPath();
+                ctx.strokeStyle = "black";
+
+                for (let i = 0; i < arestas.length; i++) {
+                    ctx.moveTo(arestas[i].p1.x, arestas[i].p1.y);
+                    ctx.lineTo(arestas[i].p2.x, arestas[i].p2.y);
+                    ctx.lineWidth = 3;
+                }
+                // ctx.moveTo(arestas[0].p1.x, arestas[0].p1.y);
+                // ctx.lineTo(arestas[0].p2.x, arestas[0].p2.y);
+                // ctx.lineWidth = 3;
+
+                ctx.closePath();
+                ctx.stroke();
+            }
+
+            function draw4()//desenhar caminho
+            {
+                ctx.beginPath();
+                ctx.strokeStyle = "yellow";
+
+                for (let i = 0; i < path.length; i++) {
+                    if (i != path.length-1) {
+                        ctx.moveTo(path[i].x, path[i].y);
+                        ctx.lineTo(path[i+1].x, path[i+1].y);
+                        ctx.lineWidth = 3;
+                    }
+                }
+                // ctx.moveTo(arestas[0].p1.x, arestas[0].p1.y);
+                // ctx.lineTo(arestas[0].p2.x, arestas[0].p2.y);
+                // ctx.lineWidth = 3;
+
+                ctx.closePath();
+                ctx.stroke();
+
+
+                ctx.beginPath();
+                ctx.fillStyle = "blue";
+                for(let i=0;i<path.length;i++)
+                {
+                    ctx.fillRect(path[i].x,path[i].y,6,6);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+
+            function busca()
+            {
+                //quick_sort(points2, 0, points2.length-1);
+                duplicar(points2);
+                convexHull();
+                //apagar();
+
+                sites = points2;
+                diagram = voronoi.compute(sites,bbox);
+                //1-ao compor voronoi, tem-se lista de cells e edges (bordas)
+                //2-atraves das cells, verifica-se vizinhos
+                //3-a partir dos vizinhos, cria-se as arestas e seu peso
+
+                // for (let i = 0; i < diagram.edges.length; i++) {
+                //     if (diagram.edges[i].rSite != null) {
+                //         vor.push({p1:diagram.edges[i].va, p2:diagram.edges[i].vb});
+                //     }
+                // }
+
+                for (let i = 0; i < diagram.edges.length; i++) {
+                    if (diagram.edges[i].rSite != null) {
+                        let d;
+                        d = distance(
+                            diagram.edges[i].lSite.x,
+                            diagram.edges[i].lSite.y,
+                            diagram.edges[i].rSite.x,
+                            diagram.edges[i].rSite.y
+                            )
+                        arestas.push({p1:diagram.edges[i].lSite, p2:diagram.edges[i].rSite, peso:d});
+                    }
+                }
+
+                //arestas.push({p1:diagram.edges[0].lSite, p2:diagram.edges[0].rSite});
+
+                //draw();
+                //draw2();
+                draw3();
+                draw();
+            }
+
+            function addCoord(x,y)
+            {
+                var button = document.createElement('text');
+                button.type = 'text';
+                button.innerHTML = 'x:'+x+'-y:'+y+' ';
+                button.className = 'text-styled';
+ 
+                var container = document.getElementById('container');
+                container.appendChild(button);
+            }
+
+            function addBtn(j, x, y)
+            {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.innerHTML = 'x: '+x+' - y: '+y;
+                button.className = 'btn-styled';
+                button.value = j;
+ 
+                button.onclick = function() {
+                    // …
+                    //alert("valor do botão: "+button.value);
+                    let converter;
+                    let temp;
+                    converter = parseInt(button.value);
+                    for (let i = 0; i < points.length; i++) {
+                        if (converter === i) {
+                            temp = points[i];
+                            break;
+                        }
+                    }
+                    for (let i = 0; i < arestas.length; i++) {
+                        if (temp.x === arestas[i].p1.x && temp.y === arestas[i].p1.y) {
+                            if (star[0] === arestas[i].p1) {
+                                alert("Você já escolheu este ponto, por favor escolha outro.");
+                                break;
+                            }
+                            else if (star.length == 2) {
+                                alert("Você já escolheu dois pontos.");
+                                break;
+                            }
+                            else{
+                                star.push(arestas[i].p1);
+                                break;
+                            }
+                        }
+                    }
+                };
+
+                button.onmouseover = function(){
+                    let converter;
+                    let temp;
+                    converter = parseInt(button.value);
+                    for (let i = 0; i < points.length; i++) {
+                        if (converter === i) {
+                            temp = points[i];
+                            break;
+                        }
+                    }
+                    ctx.beginPath();
+                    ctx.fillStyle = "blue";
+                    ctx.fillRect(temp.x,temp.y,6,6);
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+
+                button.onmouseout = function () {
+                    let converter;
+                    let temp;
+                    converter = parseInt(button.value);
+                    for (let i = 0; i < points.length; i++) {
+                        if (converter === i) {
+                            temp = points[i];
+                            break;
+                        }
+                    }
+                    ctx.beginPath();
+                    ctx.fillStyle = "red";
+                    ctx.fillRect(temp.x,temp.y,6,6);
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+ 
+                var container = document.getElementById('container');
+                container.appendChild(button);
+            }
+
+            function Astar()
+            {
+                // alert("coord1:"+arestas[0].p1.x+"-"+arestas[0].p1.y+
+                // ", coord2:"+arestas[arestas.length-1].p2.x+"-"+arestas[arestas.length-1].p2.y);
+
+                // let star1, star2;//pontos de começo e fim do a*
+                // star1=arestas[0].p1;
+                // star2=arestas[arestas.length-1].p2;
+                path.push(star[0]);
+                let arestas2 = arestas;
+                //let apagarI = arestas2.indexOf(star[0]);
+                //arestas2.splice(apagarI,1);
+
+                let atual = star[0];
+                let d = Infinity;
+                let previo;
+                let index;
+                let beco=[];
+
+                while (atual != star[1]) {
+                    for (let i = 0; i < arestas2.length; i++) {
+                        //let chute = distance(atual.x, atual.y, star2.x, star.y);
+                        if (atual === arestas2[i].p1 
+                        && path.find(element => element === arestas2[i].p2) != arestas2[i].p2
+                        && beco.find(element => element === arestas2[i].p2) != arestas2[i].p2) {
+                            let chute = distance(arestas2[i].p2.x, arestas2[i].p2.y, star[1].x, star[1].y);
+                            let custo = arestas2[i].peso;
+                            let f = custo + chute;
+                            if (f < d) {
+                                d = f;
+                                previo = arestas2[i].p2;
+                                index = i;
+                            }
+                        }
+                        else if (atual === arestas2[i].p2 
+                        && path.find(element => element === arestas2[i].p1) != arestas2[i].p1
+                        && beco.find(element => element === arestas2[i].p1) != arestas2[i].p1) {
+                            let chute = distance(arestas2[i].p1.x, arestas2[i].p1.y, star[1].x, star[1].y);
+                            let custo = arestas2[i].peso;
+                            let f = custo + chute;
+                            if (f < d) {
+                                d = f;
+                                previo = arestas2[i].p1;
+                                index = i;
+                            }
+                        }
+                    }
+
+                    if (previo != 0) {
+                        atual = previo;
+                    }
+                    previo = 0;
+                    arestas2.splice(index,1);
+                    index = null;
+                    d = Infinity;
+                    path.push(atual);
+                    if (path[path.length-2] === atual) {
+                        path.splice(path.length-2,2);
+                        beco.push(atual);
+                        atual = path[path.length-1];
+                    }
+                    draw();
+                }
+
+                draw4();
+            }
+
+            function pStar(){
+                if (star.length < 2) {
+                    alert("Precisa-se do Graham Scan e de dois pontos para usar o A*.");
+                }
+                else{
+                    Astar();
+                }
+            }
+
+            function pScan(){
+                if (points.length < 5) {
+                    alert("Precisa-se de no mínimo 5 pontos para o Graham Scan.")
+                }
+                else{
+                    busca();
+                }
+            }
+        </script>
+
+        <div id="main">
+            <button id="buttonBuscar2" onclick="pScan()">Convex Hull-Graham Scan</button>
+            <button id="buttonA*" onclick="pStar()">A*</button>
+            <img id="mapa" width="500" height="500" src="47-0.jpg" alt="NH" style="display:none;">
+            <p id="demo"></p>
+        </div>
+        <div id="container"></div>
+    </body>
+</html>
