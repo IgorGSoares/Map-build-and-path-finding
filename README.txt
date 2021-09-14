@@ -1,0 +1,1 @@
+Voronoi code made by Gorhill, see more in the follow link: https://github.com/gorhill/Javascript-Voronoi
